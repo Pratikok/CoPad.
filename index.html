@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" id="theme-color" content="#eeeae0" />
+    <meta name="description" content="A quiet, shared writing room for thoughts in progress." />
+    <meta name="application-name" content="CoPad." />
+    <meta name="msapplication-TileColor" content="#ff6900" />
+    <meta name="msapplication-TileImage" content="assets/android-chrome-192x192.png" />
+    <meta property="og:title" content="CoPad. — a shared notepad" />
+    <meta property="og:description" content="A quiet, shared writing room for thoughts in progress." />
+    <meta property="og:image" content="assets/copad-logo.png" />
+    <meta name="twitter:card" content="summary" />
+    <title>CoPad. — a shared notepad</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/copad-favicon-32.png?v=copad-brand-2" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/copad-favicon-16.png?v=copad-brand-2" />
+    <link rel="shortcut icon" type="image/png" href="/copad-favicon-32.png?v=copad-brand-2" />
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png?v=copad-brand-1" />
+    <link rel="manifest" href="manifest.json?v=copad-brand-1" />
+    <script>
+      try {
+        const savedTheme = localStorage.getItem('copad-theme') === 'dark' ? 'dark' : 'light';
+        document.documentElement.dataset.theme = savedTheme;
+        const roomParams = new URLSearchParams(location.search);
+        if (!roomParams.has('room')) {
+          const lastRoom = localStorage.getItem('copad-last-room') || '';
+          if (/^[a-z\d_-]{1,80}$/i.test(lastRoom)) {
+            roomParams.set('room', lastRoom);
+            roomParams.set('creator', '1');
+            history.replaceState({}, '', `${location.pathname}?${roomParams.toString()}${location.hash}`);
+          }
+        }
+        if (roomParams.has('room')) document.documentElement.classList.add('room-loading');
+        document.querySelector('meta[name="theme-color"]').content = savedTheme === 'dark' ? '#232520' : '#eeeae0';
+      } catch { document.documentElement.dataset.theme = 'light'; }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css?v=heading-clear-20261020-v1" />
+    <link rel="stylesheet" href="styles-extra.css?v=clear-heading-icon-v5-20261020-room-switch-v1-image-delete-v1" />
+  </head>
+  <body>
+    <section class="file-warning" id="file-warning" hidden role="alert">
+      <div class="file-warning-card"><img class="brand-mark" src="assets/copad-logo.png" alt="CoPad logo" /><p class="eyebrow">COPAD NEEDS A WEB ADDRESS</p><h1>This local file can’t be shared with friends.</h1><p>Close this tab and double-click <code>start.bat</code> in the CoPad folder. It will open the public HTTPS version and show a link you can share.</p><p>Keep the CoPad and ngrok windows open while friends are using the room.</p></div>
+    </section>
+    <script>if(location.protocol==='file:')document.getElementById('file-warning').hidden=false;</script>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" aria-label="CoPad home"><img class="brand-mark" src="assets/copad-logo.png" alt="" /><span>CoPad.</span></a>
+        <div class="room-label"><span class="live-dot"></span><span id="room-name">UNTITLED ROOM</span><span class="room-divider">/</span><span id="sync-state">connecting</span></div>
+        <div class="top-actions">
+          <button class="quiet-button sound-button" id="sound-toggle" title="Toggle typewriter sounds" aria-label="Toggle typewriter sounds"><span class="sound-icon">♫</span><span>sound off</span></button>
+          <button class="quiet-button theme-button" id="theme-toggle" title="Switch to dark mode" aria-label="Switch to dark mode"><span class="theme-icon">◐</span><span>dark mode</span></button>
+          <button class="quiet-button spellcheck-button" id="spellcheck-toggle" type="button" title="Turn spell check off" aria-label="Turn spell check off" aria-pressed="true"><span class="spellcheck-icon" aria-hidden="true">✓</span><span>spell on</span></button>
+          <div class="avatar-stack" id="avatar-stack" aria-label="People in this room"></div>
+          <button class="profile-edit-button" id="edit-name" type="button" title="Edit your profile" aria-label="Edit your name and color"><span class="profile-button-avatar" id="profile-button-avatar" aria-hidden="true"></span><span class="profile-pencil-overlay" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="m12.7 3.3 4 4M3 17l3.8-.8L17 6a1.8 1.8 0 0 0-2.5-2.5L4.3 13.8 3 17Z"/></svg></span></button>
+          <button class="share-button" id="share-button"><span class="share-icon">↗</span> Share room</button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="left-rail">
+          <div class="rail-cap">YOUR ROOMS</div>
+          <div class="room-history" id="room-history" aria-label="Saved rooms"></div>
+          <button class="rail-item new-room-button" id="new-note"><span class="rail-glyph">＋</span><span>New room</span></button>
+          <section class="unicode-card" id="unicode-card" aria-label="Shared UniCode house">
+            <div class="unicode-card-heading"><span>UNICODE HOUSE</span></div>
+            <button class="unicode-code" id="unicode-code" type="button" title="Copy your house UniCode">······</button>
+            <form class="unicode-link-form" id="unicode-link-form" aria-label="Join a UniCode house"><input name="code" inputmode="numeric" autocomplete="off" maxlength="6" pattern="[0-9]{6}" placeholder="Enter UniCode" aria-label="Six-digit UniCode to join" required /><button type="submit" title="Join house" aria-label="Join house">↗</button></form>
+          </section>
+          <div class="rail-rule"></div>
+          <div class="rail-bottom"><span class="keyboard-hint">⌘ / Ctrl + K</span><span>keyboard shortcuts</span></div>
+        </aside>
+
+        <section class="empty-room-state" id="empty-room-state" aria-live="polite">
+          <span class="empty-room-mark" aria-hidden="true">c.</span>
+          <p class="empty-room-kicker">YOUR DESK IS CLEAR</p>
+          <h1>Create a room to write</h1>
+          <p>Start a note of your own, then invite someone in whenever you like.</p>
+          <button class="share-button" id="create-first-room" type="button">Create room <span aria-hidden="true">→</span></button>
+        </section>
+
+        <section class="note-area">
+          <div class="format-bar" role="toolbar" aria-label="Text formatting">
+            <button class="format-select" id="font-select" title="Choose typeface"><span class="font-preview">Aa</span><span>Typewriter</span><span class="chevron" aria-hidden="true"><svg viewBox="0 0 10 6"><path d="m1 1 4 4 4-4"/></svg></span></button>
+            <span class="toolbar-separator"></span>
+            <button class="format-button" data-command="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+            <button class="format-button italic" data-command="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+            <button class="format-button underline" data-command="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+            <span class="toolbar-separator"></span>
+            <button class="format-button heading" data-block="h1" title="Heading 1">H1</button>
+            <button class="format-button heading" data-block="h2" title="Heading 2">H2</button>
+            <button class="format-button heading" data-block="h3" title="Heading 3">H3</button>
+            <button class="format-button heading" data-block="h4" title="Heading 4">H4</button>
+            <button class="format-button heading clear-heading-button" data-block="clear-heading" title="Clear heading" aria-label="Clear heading"><span class="clear-heading-glyph" aria-hidden="true"><span>H</span><span class="clear-heading-cross"></span></span></button>
+            <span class="toolbar-separator"></span>
+            <button class="format-button" id="color-button" title="Text color" aria-label="Text color"><span class="color-glyph">A</span><span class="color-underline"></span></button>
+            <button class="format-button" id="highlight-button" title="Highlight" aria-label="Highlight"><span class="highlight-glyph">▰</span></button>
+            <button class="format-button marker-tool-button" id="marker-tool-button" type="button" title="Turn on highlight pen" aria-label="Turn on highlight pen" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="marker-body" d="m5 15 9.4-9.4 5 5L10 20H5v-5Z"/><path d="m12.8 7.2 5 5M5 20l-1 1"/></svg></button>
+            <span class="toolbar-separator"></span>
+            <button class="format-button list-button" data-command="insertUnorderedList" title="Bullet list">☷</button>
+            <button class="format-button quote-button" data-block="blockquote" title="Quote">❞</button>
+            <button class="format-button image-button" id="insert-image" type="button" title="Insert image (or paste one)" aria-label="Insert image"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="1.5"/><circle cx="7" cy="8" r="1.4"/><path d="m4 14 4-4 2.5 2 2-2 3.5 4"/></svg></button>
+            <input id="image-file-input" type="file" accept="image/*" hidden />
+            <span class="toolbar-spacer"></span>
+            <button class="format-button undo-button" data-command="undo" title="Undo" aria-label="Undo" disabled>↶</button>
+            <button class="format-button" data-command="redo" title="Redo" aria-label="Redo" disabled>↷</button>
+            <span class="toolbar-separator save-separator"></span>
+            <button class="format-button save-room-button" id="save-room" title="Save this note as a PDF" aria-label="Save this note as a PDF"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 2.75h11.5L17.25 5.5v11.75H2.75V2.75Z"/><path d="M6 2.75v5h7v-5M6 17.25v-5.5h8v5.5"/><path d="M14 2.75v3h-2"/></svg></button>
+            <div class="popover palette-popover hidden" id="color-popover" aria-label="Text colors"><span class="palette-title">TEXT COLOR</span><div class="swatch-row"><button data-color="#bd563d" title="Brick red" style="--swatch:#bd563d"></button><button data-color="#6d56b5" title="Indigo" style="--swatch:#6d56b5"></button><button data-color="#287963" title="Forest green" style="--swatch:#287963"></button><button data-color="#326db0" title="Blue" style="--swatch:#326db0"></button><button class="clear-swatch" data-clear-style="color" title="Remove text color" aria-label="Remove text color">×</button><label class="custom-swatch" title="Choose custom color"><span class="color-wheel-icon" aria-hidden="true"></span><input id="color-picker" type="color" aria-label="Choose custom text color" value="#bd563d" /></label></div></div>
+            <div class="popover palette-popover hidden" id="highlight-popover" aria-label="Highlight colors"><span class="palette-title">HIGHLIGHT</span><div class="swatch-row"><button data-highlight="#ffe17c" title="Sunshine" style="--swatch:#ffe17c"></button><button data-highlight="#ffaaa0" title="Rose" style="--swatch:#ffaaa0"></button><button data-highlight="#9de2b0" title="Mint" style="--swatch:#9de2b0"></button><button data-highlight="#a6d2ff" title="Sky" style="--swatch:#a6d2ff"></button><button class="clear-swatch" data-clear-style="background-color" title="Remove highlight" aria-label="Remove highlight">×</button><label class="custom-swatch" title="Choose custom highlight"><span class="color-wheel-icon" aria-hidden="true"></span><input id="highlight-picker" type="color" aria-label="Choose custom highlight color" value="#ffe17c" /></label></div></div>
+            <div class="popover font-popover hidden" id="font-popover"><button data-font="DM Mono">Typewriter</button><button data-font="IBM Plex Mono">Plex Mono</button><button data-font="DM Sans">Sans</button></div>
+          </div>
+
+          <div class="paper-wrap">
+            <div class="paper" id="paper">
+              <div class="paper-topline"><span>FIELD NOTES <span class="paper-star">✳</span> VOL. 01</span><span id="date-stamp"></span></div>
+              <input id="note-title" class="note-title" maxlength="100" value="A place for your thoughts" aria-label="Note title" spellcheck="true" />
+              <div class="paper-rule"></div>
+              <div id="editor" class="editor" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" aria-label="Shared note" data-placeholder="Start with a thought…"></div>
+              
+            </div>
+            <div class="page-shadow"></div>
+          </div>
+          <footer class="statusbar"><div class="status-stats"><span id="word-count">0 words</span><span class="stats-sep">·</span><span id="character-count">0 characters</span><span class="stats-sep">·</span><span id="read-time">1 min read</span></div></footer>
+        </section>
+
+        <aside class="right-rail">
+          <div class="right-card room-card"><div class="card-heading"><span class="card-icon">◎</span><span>IN THIS ROOM</span></div><div id="people-list" class="people-list"></div><div class="people-note"><span class="mini-live"></span> People join as they arrive</div><button class="invite-link" id="invite-link">＋ Invite someone</button></div>
+          <div class="right-card note-card"><div class="card-heading"><span class="card-icon">⌁</span><span>NOTE DETAILS</span></div><div class="detail-row"><span>Created</span><strong id="created-date">Today</strong></div><div class="detail-row"><span>Last edited</span><strong id="detail-edited">Just now</strong></div><div class="detail-row"><span>Room type</span><strong>Anyone with link</strong></div></div>
+        </aside>
+      </section>
+      <div class="toast" id="toast" role="status"></div>
+    </main>
+
+    <div class="modal-backdrop hidden" id="name-modal"><section class="name-modal" role="dialog" aria-modal="true" aria-labelledby="welcome-title"><button class="modal-close hidden" id="close-name" type="button" aria-label="Cancel name change">×</button><img class="modal-mark" src="assets/copad-logo.png" alt="" /><span class="eyebrow">PULL UP A CHAIR</span><h1 id="welcome-title">What should we call you?</h1><p id="name-help">Your name shows up beside your cursor. It stays saved on this device.</p><form id="name-form"><label for="name-input">YOUR NAME</label><input id="name-input" maxlength="28" placeholder="e.g. Sam" autocomplete="name" required /><div class="profile-color-setting" id="profile-color-setting"><div class="avatar-preview" id="avatar-preview"></div><div class="profile-color-picker"><span class="profile-color-label">PROFILE & CARET COLOR</span><div class="profile-color-options" id="profile-color-options" role="group" aria-label="Choose your profile and caret color"></div><span class="profile-color-help">Your color marks your profile and named caret in every room.</span></div></div><button class="share-button modal-submit" id="name-submit" type="submit">Enter the room <span>→</span></button></form><span class="modal-footnote" id="name-footnote">NO SIGN-UP. JUST A NAME AND A NOTE.</span></section></div>
+    <div class="modal-backdrop hidden" id="share-modal"><section class="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-title"><button class="modal-close" id="close-share" aria-label="Close">×</button><span class="eyebrow">PASS IT ALONG</span><h2 id="share-title">Good notes like company.</h2><p>Anyone with this link can join the room and write with you.</p><div class="share-url"><span id="share-url-text"></span><button id="copy-link">Copy link</button></div><div class="share-hint"><span>↗</span><span id="share-hint">They'll choose a name when they arrive.</span></div></section></div>
+    <div class="selection-menu hidden" id="selection-menu" role="menu" aria-label="Text formatting">
+      <div id="context-text-actions">
+        <div class="context-action-row"><button data-menu-command="bold" title="Bold"><b>B</b></button><button data-menu-command="italic" title="Italic"><i>I</i></button><button data-menu-command="underline" title="Underline"><u>U</u></button><span></span><button data-menu-block="h1" title="Heading 1">H1</button><button data-menu-block="h2" title="Heading 2">H2</button><button data-menu-block="h3" title="Heading 3">H3</button><button data-menu-block="h4" title="Heading 4">H4</button><button class="clear-heading-button" data-menu-block="clear-heading" title="Clear heading" aria-label="Clear heading"><span class="clear-heading-glyph" aria-hidden="true"><span>H</span><span class="clear-heading-cross"></span></span></button></div>
+        <div class="context-palette"><span>A</span><button data-menu-color="#bd563d" title="Brick red" style="--swatch:#bd563d"></button><button data-menu-color="#6d56b5" title="Indigo" style="--swatch:#6d56b5"></button><button data-menu-color="#287963" title="Forest green" style="--swatch:#287963"></button><button data-menu-color="#326db0" title="Blue" style="--swatch:#326db0"></button><button class="clear-swatch" data-menu-clear="color" title="Remove text color" aria-label="Remove text color">×</button><label class="custom-swatch" title="Choose custom text color"><span class="color-wheel-icon" aria-hidden="true"></span><input id="context-color-picker" type="color" aria-label="Choose custom text color" value="#bd563d" /></label><span class="palette-caption">TEXT</span></div>
+        <div class="context-palette"><span>▰</span><button data-menu-highlight="#ffe17c" title="Sunshine" style="--swatch:#ffe17c"></button><button data-menu-highlight="#ffaaa0" title="Rose" style="--swatch:#ffaaa0"></button><button data-menu-highlight="#9de2b0" title="Mint" style="--swatch:#9de2b0"></button><button data-menu-highlight="#a6d2ff" title="Sky" style="--swatch:#a6d2ff"></button><button class="clear-swatch" data-menu-clear="background-color" title="Remove highlight" aria-label="Remove highlight">×</button><label class="custom-swatch" title="Choose custom highlight"><span class="color-wheel-icon" aria-hidden="true"></span><input id="context-highlight-picker" type="color" aria-label="Choose custom highlight color" value="#ffe17c" /></label><span class="palette-caption">MARK</span></div>
+      </div>
+    </div>
+    <script type="importmap">{"imports":{"yjs":"https://esm.sh/yjs@13.6.27"}}</script>
+    <script type="module" src="app.js?v=selected-heading-format-v10-room-switch-20261020-image-delete-v1"></script>
+  </body>
+</html>

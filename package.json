@@ -4,11 +4,17 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "ws": "^6.2.2",
-    "y-websocket": "2.1.0",
-    "yjs": "13.6.27"
+    "@supabase/supabase-js": "^2.45.4",
+    "y-indexeddb": "^9.0.12",
+    "y-protocols": "^1.0.6",
+    "yjs": "^13.6.27"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
   }
 }

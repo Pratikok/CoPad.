@@ -1,11 +1,6 @@
 import * as Y from 'yjs';
-import * as syncProtocol from 'y-protocols/sync';
 import * as awarenessProtocol from 'y-protocols/awareness';
 import { createSupabaseClient } from './supabase-client.js';
-
-const MESSAGE_SYNC = 0;
-const MESSAGE_AWARENESS = 1;
-const MESSAGE_SYNC_REQUEST = 2;
 
 const SYNC_DEBOUNCE_MS = 400;
 const PRESENCE_INTERVAL_MS = 4000;
@@ -28,30 +23,26 @@ function fromBase64(value) {
   return bytes;
 }
 
-export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabaseUrl, supabaseAnonKey } = {}) {
+export function createSupabaseProvider(roomId, ydoc, { awareness, user } = {}) {
   const channelName = `copad-room:${roomId}`;
-  const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey);
+  const supabase = createSupabaseClient();
   const doc = ydoc;
   const aw = awareness || new awarenessProtocol.Awareness(doc);
-  const localState = { user: user || null };
 
   let connected = false;
   let destroyed = false;
   let channel = null;
   let syncTimer = null;
   let presenceTimer = null;
-  const remoteOrigins = new Set();
-  const peers = new Set();
+  let pruneTimer = null;
   let persistenceBusy = false;
-  let initialLoadDone = false;
-
-  const encoding = Y.encoding;
-  const decoding = Y.decoding;
+  const remoteOrigins = new Set();
+  const statusListeners = new Set();
+  const syncedListeners = new Set();
 
   function emitStatus() {
     const status = connected ? 'connected' : 'disconnected';
-    doc.emit('status', [{ status }]);
-    if (awareness) doc.emit('awareness', [{ added: [], updated: [], removed: [], origin: null }]);
+    statusListeners.forEach((fn) => fn({ status }));
   }
 
   function schedulePersistence() {
@@ -103,14 +94,13 @@ export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabase
     } catch (err) {
       console.warn('copad: load error', err?.message || err);
     } finally {
-      initialLoadDone = true;
-      doc.emit('synced', [true]);
+      syncedListeners.forEach((fn) => fn(true));
       schedulePersistence();
     }
   }
 
-  function broadcastUpdate(update, origin) {
-    if (destroyed || !channel) return;
+  function broadcastUpdate(update) {
+    if (destroyed || !channel || !connected) return;
     if (update.length > MAX_UPDATE_SIZE) {
       persistState();
       return;
@@ -118,7 +108,7 @@ export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabase
     channel.send({
       type: 'broadcast',
       event: 'u',
-      payload: { u: toBase64(update), o: origin === 'db' ? 'db' : 'peer' },
+      payload: { u: toBase64(update) },
     });
   }
 
@@ -145,44 +135,8 @@ export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabase
     }
   }
 
-  function handleSyncRequest(payload) {
-    if (!channel) return;
-    const encoder = encoding.createEncoder();
-    encoding.writeVarUint(encoder, MESSAGE_SYNC);
-    syncProtocol.writeSyncStep1(encoder, doc);
-    channel.send({
-      type: 'broadcast',
-      event: 'sync',
-      payload: { s: toBase64(encoding.toUint8Array(encoder)), from: clientId() },
-    });
-  }
-
-  function handleRemoteSync(payload) {
-    if (!payload?.s) return;
-    try {
-      const decoder = decoding.createDecoder(fromBase64(payload.s));
-      const messageType = decoding.readVarUint(decoder);
-      if (messageType === MESSAGE_SYNC) {
-        const encoder = encoding.createEncoder();
-        encoding.writeVarUint(encoder, MESSAGE_SYNC);
-        syncProtocol.readSyncStep1(decoder, encoder, doc);
-        if (encoding.length(encoder) > 1) {
-          channel.send({
-            type: 'broadcast',
-            event: 'u',
-            payload: { u: toBase64(encoding.toUint8Array(encoder)), o: 'sync' },
-          });
-        }
-      }
-    } catch (err) {
-      console.warn('copad: could not handle sync', err?.message || err);
-    }
-  }
-
-  function clientId() { return doc.clientID; }
-
   function sendAwareness() {
-    if (destroyed || !channel) return;
+    if (destroyed || !channel || !connected) return;
     const update = awarenessProtocol.encodeAwarenessUpdate(aw, [doc.clientID]);
     if (update.length > MAX_UPDATE_SIZE) return;
     channel.send({
@@ -193,8 +147,35 @@ export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabase
   }
 
   function sendSyncRequest() {
-    if (!channel) return;
+    if (!channel || !connected) return;
     channel.send({ type: 'broadcast', event: 'sr', payload: { c: doc.clientID } });
+  }
+
+  function handleSyncRequest() {
+    if (!channel || !connected) return;
+    const stateVector = Y.encodeStateVector(doc);
+    channel.send({
+      type: 'broadcast',
+      event: 'sv',
+      payload: { sv: toBase64(stateVector), c: doc.clientID },
+    });
+  }
+
+  function handleStateVector(payload) {
+    if (!channel || !connected || payload?.c === doc.clientID) return;
+    try {
+      const remoteSv = fromBase64(payload.sv);
+      const missingUpdate = Y.encodeStateAsUpdate(doc, remoteSv);
+      if (missingUpdate.length > 1) {
+        channel.send({
+          type: 'broadcast',
+          event: 'u',
+          payload: { u: toBase64(missingUpdate) },
+        });
+      }
+    } catch (err) {
+      console.warn('copad: could not handle state vector', err?.message || err);
+    }
   }
 
   function startPresence() {
@@ -202,10 +183,8 @@ export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabase
     sendAwareness();
     presenceTimer = setInterval(() => {
       if (!destroyed && connected) {
+        aw.setLocalStateField('t', Date.now());
         sendAwareness();
-        aw.setLocalStateField('heartbeat', Date.now());
-        sendAwareness();
-        aw.setLocalStateField('heartbeat', null);
       }
     }, PRESENCE_INTERVAL_MS);
   }
@@ -216,12 +195,11 @@ export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabase
     const remove = [];
     for (const [client, state] of states) {
       if (client === doc.clientID) continue;
-      const lastSeen = state?.heartbeat || state?.t || 0;
+      const lastSeen = state?.t || 0;
       if (lastSeen && now - lastSeen > PRESENCE_TTL_MS) remove.push(client);
     }
     if (remove.length) {
       awarenessProtocol.removeAwarenessStates(aw, remove, 'timeout');
-      if (awareness) doc.emit('awareness', [{ added: [], updated: [], removed: remove, origin: null }]);
     }
   }
 
@@ -234,24 +212,18 @@ export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabase
 
     channel.on('broadcast', { event: 'u' }, ({ payload }) => handleRemoteUpdate(payload));
     channel.on('broadcast', { event: 'a' }, ({ payload }) => handleRemoteAwareness(payload));
-    channel.on('broadcast', { event: 'sr' }, ({ payload }) => handleSyncRequest(payload));
-    channel.on('broadcast', { event: 'sync' }, ({ payload }) => {
-      if (payload?.from === doc.clientID) return;
-      handleRemoteSync(payload);
-    });
+    channel.on('broadcast', { event: 'sr' }, () => handleSyncRequest());
+    channel.on('broadcast', { event: 'sv' }, ({ payload }) => handleStateVector(payload));
 
     channel.on('presence', { event: 'join' }, ({ key }) => {
       if (key !== String(doc.clientID)) {
-        peers.add(key);
         sendSyncRequest();
       }
     });
     channel.on('presence', { event: 'leave' }, ({ key }) => {
-      peers.delete(key);
       const id = Number(key);
       if (Number.isFinite(id)) {
         awarenessProtocol.removeAwarenessStates(aw, [id], 'left');
-        if (awareness) doc.emit('awareness', [{ added: [], updated: [], removed: [id], origin: null }]);
       }
     });
 
@@ -262,7 +234,7 @@ export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabase
           await loadInitialState();
           sendSyncRequest();
           startPresence();
-          setInterval(pruneStaleAwareness, PRESENCE_INTERVAL_MS);
+          pruneTimer = setInterval(pruneStaleAwareness, PRESENCE_INTERVAL_MS);
           emitStatus();
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           connected = false;
@@ -280,6 +252,7 @@ export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabase
     connected = false;
     if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
     if (presenceTimer) { clearInterval(presenceTimer); presenceTimer = null; }
+    if (pruneTimer) { clearInterval(pruneTimer); pruneTimer = null; }
     if (channel) {
       try { channel.untrack(); } catch { /* already unsubscribed */ }
       try { supabase.removeChannel(channel); } catch { /* already removed */ }
@@ -293,37 +266,22 @@ export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabase
       schedulePersistence();
       return;
     }
-    broadcastUpdate(update, origin);
+    broadcastUpdate(update);
     schedulePersistence();
   });
 
-  aw.on('update', ({ added, updated, removed }) => {
+  aw.on('update', () => {
     if (destroyed || !connected) return;
     sendAwareness();
   });
 
-  function setAwarenessField(field, value) {
-    aw.setLocalStateField(field, value);
-    sendAwareness();
-  }
-
-  function setLocalStateField(field, value) {
-    aw.setLocalStateField(field, value);
-    sendAwareness();
-  }
-
-  function getLocalState() {
-    return aw.getLocalState();
-  }
-
-  function getAwareness() {
-    return aw;
-  }
-
-  function setUser(userObj) {
-    localState.user = userObj;
-    aw.setLocalStateField('user', userObj);
-    sendAwareness();
+  function on(event, fn) {
+    if (event === 'status') statusListeners.add(fn);
+    else if (event === 'synced') syncedListeners.add(fn);
+    return () => {
+      statusListeners.delete(fn);
+      syncedListeners.delete(fn);
+    };
   }
 
   return {
@@ -335,12 +293,16 @@ export function createSupabaseProvider(roomId, ydoc, { awareness, user, supabase
       disconnect();
       try { aw.destroy(); } catch { /* already destroyed */ }
     },
-    setAwarenessField,
-    setLocalStateField,
-    getLocalState,
-    getAwareness,
-    setUser,
+    on,
+    setLocalStateField(field, value) {
+      aw.setLocalStateField(field, value);
+      sendAwareness();
+    },
+    getLocalState() { return aw.getLocalState(); },
+    setUser(userObj) {
+      aw.setLocalStateField('user', userObj);
+      sendAwareness();
+    },
     get status() { return connected ? 'connected' : 'disconnected'; },
-    get channel() { return channel; },
   };
 }

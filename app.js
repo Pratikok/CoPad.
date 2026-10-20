@@ -1,6 +1,6 @@
-import * as Y from 'https://esm.sh/yjs@13.6.27';
-import { WebsocketProvider } from 'https://esm.sh/y-websocket@2.1.0?external=yjs';
-import { IndexeddbPersistence } from 'https://esm.sh/y-indexeddb@9.0.12?external=yjs';
+import * as Y from 'yjs';
+import { IndexeddbPersistence } from 'y-indexeddb';
+import { createSupabaseProvider } from './src/supabase-provider.js';
 
 const $ = (selector) => document.querySelector(selector);
 const editor = $('#editor');
@@ -283,16 +283,17 @@ let unicodePresenceInFlight = false;
 let unicodePresenceRefreshQueued = false;
 let unicodePresenceServerWarningShown = false;
 const unicodePresenceSessionId = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+const unicodeEndpoint = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/copad-unicode`;
 function unicodeRequest(path, body, method = 'POST') {
-  return fetch(path, body === undefined ? { cache: 'no-store' } : {
-    method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store',
+  const search = path.includes('?') ? path.slice(path.indexOf('?')) : '';
+  const action = path.replace(/\?.*$/, '').replace('/api/unicode/', '');
+  const url = `${unicodeEndpoint}/${action}${search}`;
+  return fetch(url, body === undefined ? { cache: 'no-store', headers: { Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` } } : {
+    method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` }, body: JSON.stringify(body), cache: 'no-store',
   }).then(async (response) => {
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const isOldDeleteServer = method === 'DELETE' && response.status === 404 && /unicode endpoint not found/i.test(result.error || '');
-      const message = isOldDeleteServer
-        ? 'This CoPad server is still running an older version. Stop its Node and ngrok processes, then start CoPad again.'
-        : result.error || 'UniCode request failed.';
+      const message = result.error || 'UniCode request failed.';
       throw Object.assign(new Error(message), { status: response.status, deletedRoomId: result.deletedRoomId });
     }
     return result;
@@ -416,10 +417,10 @@ function leaveUnicodePresence() {
   if (!unicodeReady) return;
   const payload = JSON.stringify({ browserId: unicodeBrowserId, sessionId: unicodePresenceSessionId, leave: true });
   try {
-    if (navigator.sendBeacon?.('/api/unicode/presence', new Blob([payload], { type: 'application/json' }))) return;
+    if (navigator.sendBeacon?.(`${unicodeEndpoint}/presence`, new Blob([payload], { type: 'application/json' }))) return;
   } catch { /* Fall back to keepalive fetch if the browser can't queue a beacon. */ }
-  void fetch('/api/unicode/presence', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload,
+  void fetch(`${unicodeEndpoint}/presence`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}` }, body: payload,
     cache: 'no-store', keepalive: true,
   }).catch(() => {});
 }
@@ -877,11 +878,11 @@ function connectRoom() {
       applySharedTitleToInput();
       storeRoomSnapshotLocally(editor.innerHTML, sharedTitle.toString());
     });
-    const socketProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    provider = new WebsocketProvider(`${socketProtocol}//${location.host}`, `margin-${roomId}`, roomDoc, { connect: true });
+    provider = createSupabaseProvider(`margin-${roomId}`, roomDoc, { user: { ...user } });
+    provider.connect();
     const roomProvider = provider;
-    roomProvider.on('sync', (synced) => {
-      if (generation !== roomSwitchGeneration || !synced) return;
+    roomProvider.on('synced', () => {
+      if (generation !== roomSwitchGeneration) return;
       const needsFirstLocalCopy = roomAwaitingRemoteSync && !hasLocalRoomCopy;
       revealRoomContent();
       if (needsFirstLocalCopy) setTimeout(() => {
@@ -2802,7 +2803,7 @@ document.addEventListener('pointercancel', (event) => {
 imagePaper.addEventListener('scroll', positionImageResizeHandle, { passive: true });
 window.addEventListener('resize', positionImageResizeHandle);
 function roomUrl() {
-  if (!hasRoom || location.protocol !== 'https:' || ['localhost', '127.0.0.1', '::1'].includes(location.hostname)) return null;
+  if (!hasRoom) return null;
   return `${location.origin}${location.pathname}?room=${encodeURIComponent(room)}`;
 }
 function openShare() {
@@ -3056,7 +3057,7 @@ function preloadKeySounds() {
     keySoundContext ||= new (window.AudioContext || window.webkitAudioContext)();
     keySoundLoad = Promise.all(Array.from({ length: 32 }, async (_, index) => {
       const filename = `keypress-${String(index + 1).padStart(3, '0')}.wav`;
-      const response = await fetch(new URL(`./assets/key-sounds/${filename}`, import.meta.url));
+      const response = await fetch(`/assets/key-sounds/${filename}`);
       if (!response.ok) throw new Error(`Could not load ${filename}`);
       return keySoundContext.decodeAudioData(await response.arrayBuffer());
     })).then((buffers) => { keySoundBuffers = buffers; }).catch(() => { keySoundLoad = null; });

@@ -43,7 +43,7 @@
   </head>
   <body>
     <section class="file-warning" id="file-warning" hidden role="alert">
-      <div class="file-warning-card"><img class="brand-mark" src="assets/copad-logo.png" alt="CoPad logo" /><p class="eyebrow">COPAD NEEDS A WEB ADDRESS</p><h1>This local file can’t be shared with friends.</h1><p>Close this tab and double-click <code>start.bat</code> in the CoPad folder. It will open the public HTTPS version and show a link you can share.</p><p>Keep the CoPad and ngrok windows open while friends are using the room.</p></div>
+      <div class="file-warning-card"><img class="brand-mark" src="assets/copad-logo.png" alt="CoPad logo" /><p class="eyebrow">COPAD NEEDS A WEB ADDRESS</p><h1>This local file can’t be shared with friends.</h1><p>Open CoPad from its published web address to share a room link with friends.</p><p>Anyone with the room link can join — no sign-up needed.</p></div>
     </section>
     <script>if(location.protocol==='file:')document.getElementById('file-warning').hidden=false;</script>
     <main class="app-shell">
@@ -144,7 +144,6 @@
         <div class="context-palette"><span>▰</span><button data-menu-highlight="#ffe17c" title="Sunshine" style="--swatch:#ffe17c"></button><button data-menu-highlight="#ffaaa0" title="Rose" style="--swatch:#ffaaa0"></button><button data-menu-highlight="#9de2b0" title="Mint" style="--swatch:#9de2b0"></button><button data-menu-highlight="#a6d2ff" title="Sky" style="--swatch:#a6d2ff"></button><button class="clear-swatch" data-menu-clear="background-color" title="Remove highlight" aria-label="Remove highlight">×</button><label class="custom-swatch" title="Choose custom highlight"><span class="color-wheel-icon" aria-hidden="true"></span><input id="context-highlight-picker" type="color" aria-label="Choose custom highlight color" value="#ffe17c" /></label><span class="palette-caption">MARK</span></div>
       </div>
     </div>
-    <script type="importmap">{"imports":{"yjs":"https://esm.sh/yjs@13.6.27"}}</script>
-    <script type="module" src="app.js?v=selected-heading-format-v10-room-switch-20261020-image-delete-v1"></script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>
